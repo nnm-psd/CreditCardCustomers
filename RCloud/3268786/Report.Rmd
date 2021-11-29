@@ -1,0 +1,249 @@
+---
+title: "Bank Churners"
+author: "Ngoc Minh NGUYEN"
+date: "24 November 2021"
+output:
+  html_document:
+    toc: no
+    df_print: paged
+  pdf_document:
+    toc: no
+    highlight: zenburn
+fontsize: 11pt
+subtitle: Exploratory Analysis
+geometry: left=2cm,right=2cm,top=2cm,bottom=2cm
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+
+library(ggplot2)
+library(stringr)
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(readr)   # load dataset
+library(gridExtra)    # arrange plots
+```
+
+
+```{r dataset }
+# Load dataset
+clients_dataset <- read.table('BankChurners.csv',header = TRUE, sep = ",")
+
+# Preprocess data
+# Delete the last two columns
+clients_dataset <- clients_dataset[2:21]
+
+
+# Format dataset
+
+clients_dataset$Income_Category <- factor(clients_dataset$Income_Category,levels=c("Less than $40K","$40K - $60K","$60K - $80K","$80K - $120K","$120K +","Unknown"))
+
+clients_dataset$Card_Category <- factor(clients_dataset$Card_Category,levels=c("Blue","Silver","Gold","Platinum"))
+
+clients_dataset$Education_Level <- factor(clients_dataset$Education_Level,levels=c("Uneducated","High School","College","Graduate","Post-Graduate","Doctorate"))
+
+
+factor_cols <- c('Gender', 'Attrition_Flag', 'Marital_Status')
+clients_dataset[factor_cols] <- lapply(clients_dataset[factor_cols], factor)
+```
+
+# Introduction 
+
+## Context 
+
+This is a project initially to explore data on Kaggle. 
+
+## Problem
+
+The data collected from bank churners will give us some kind of insight into the financial situation of people by age, by genders or by education level and so on. Is this true that men make more money than women or the higher your degree the higher your pay? Those are questions can be tested on this data.
+
+
+# 1. The analysis on variables and individuals using Principal Component Analysis
+
+Before we move into details of the data, it should be helpful to have a general view of correlation and representation of variables and individuals on factorial axes. 
+
+
+
+```{r}
+install.packages("FactoMineR")
+library("FactoMineR")
+```
+
+##  1.1 Analysis of quantitative variables
+
+```{r}
+clientsNum <- clients_dataset[,c(2,4,9:20)]
+res.pca = PCA(clientsNum,scale.unit=TRUE, ncp=5, graph=F)
+```
+
+```{r}
+#res.pca = PCA(clients_dataset, scale.unit=TRUE, ncp=5, quanti.sup=c(2,4,9:20), #quali.sup=c(1,3,5,6,7,8), graph=T )
+#res.pca = PCA(clients_dataset)
+```
+
+```{r}
+plot.PCA(res.pca, axes=c(1,2),choix="var",cex=0.5,label=NULL,graph.type = "ggplot")
+plot.PCA(res.pca, axes=c(2,3),choix="var",cex=0.5,label=NULL,graph.type = "ggplot")
+plot.PCA(res.pca, axes=c(3,4),choix="var",cex=0.5,label=NULL,graph.type = "ggplot")
+#res.pca$ind$cos2
+#sum(res.pca$sd^2)
+```
+
+Observing at the projection of features on the first factorial plane, we can deduce relationship between some of them:
+
+1) Total_Trans_Ct and Total_Trans_Amt
+Total transaction count (in the last 12 months) and Total transaction amount (in the last 12 months) is positively correlated, which makes sense cause the more you make transaction the more amount of money transfered.
+
+2) Credit_Limit and Avg_Open_To_Buy
+Credit limit on the credit card and Open to buy credit line is almost identical in term of correlation. This is expected since the credit limit and credit line are the same definition: in short, it's a credit facility extended by the bank to the customers that enables them to draw on the facility when they need funds. Open-to-buy, however, is the amount you need to buy products with, in order to achieve the set sales budget for a certain period, usually 6 months. 
+
+3) Customer_Age and Month_on_book
+The customer's age and the period of relationship with bank in month is positively correlated as shown in second diagram.
+
+4) Total_Amt_Chng_Q4_Q1 and Total_Ct_Chng_Q4_Q1 
+Change in Transaction Amount (Q4 over Q1) and Change in Transaction Count (Q4 over Q1) are positively related as we have seen above.
+
+```{r}
+barplot(res.pca$eig[,1]) #Histogram of eigen values
+res<-res.pca$eig[,1]
+barplot(res[res>1])
+```
+The first bar chart shows us the variance retained from each component. Using the law of Kaiser, we only chose components with the variance greater than 1. The second bar chart gives us the first five components on whom we project our data.
+
+```{r}
+round(res.pca$var$cos2,digits=1) #Representation of features on axes 
+```
+Look at the chart above, only Credit_Limit and Avg_Open_To_Buy on the 1st axe; Total_Trans_Amt and Total_Trans_Ct are well presented on the 2nd axe; Customer_Age and Credit_Limit on the 3rd axe; Total_Amt_Chng_Q4_Q1 and Total_Ct_Chng_Q4_Q1 on the 4th axe are the only well presented features so we can only deduce 4 properites as above. 
+(The quality of representation of a feature is decided by its distance to the projection on an axe, the closer it is, the greater the value of cosinus between them)
+
+```{r}
+round(res.pca$var$contrib,digits=1) #Representation of features on axes 
+```
+The chart above gives us information on how each feature contributes to the axes. In in other words, the higher the contribution of a feature, the more inclined the axes toward this feature vector, which also explains the representation of feature on axes.
+
+```{r}
+plot.PCA(res.pca, axes=c(1,2),choix="ind",cex=0,label=NULL,graph.type = "ggplot")
+```
+
+##  1.2 Analysis of qualitative variables
+
+```{r}
+install.packages("mltools")
+library(mltools)
+
+```
+
+```{r}
+library(data.table)
+```
+
+```{r}
+clientsCat <- clients_dataset[,c(1,3,5:8)]
+clientsCatOH <- one_hot(as.data.table(clientsCat))
+#summary(clientsCatOH)
+clientsCatOH<-drop_na(clientsCatOH) #drop row with missing values
+#sum(is.na(clientsCatOH))
+res.ca <- CA(clientsCatOH,graph=F)
+```
+
+```{r echo=TRUE, fig.height=8, fig.width=16}
+plot.CA(res.ca,cex=0.4,scale.unit=TRUE,label=NULL,graph.type = "ggplot",invisible = "row")
+barplot(res.ca$eig[,1])
+#res.ca$row$cos2
+#res.ca$row$contrib
+#res.ca$col$cos2
+#res.ca$col$contrib
+```
+
+From the eigen values, we only take the first 17 components or axes to retain information. We also obtain some interesting information based on the distances between feature above:
+
+1) Income category "above $120K" is close to Card category "Gold" and "Silver", but not "Platinum".
+
+2) Income category "$40K-60K", Education level "Highschool" and Marital Status "Married" are close, which creates a group of features.
+
+3) Education level "Uneducated" is close to Marital Status "Single" and "Divorced"
+
+4) Income categories "$60K-80K" and "$80K-120K" are close to Education Level "Post Graduate" and Gender "Male"
+
+5) Income category "Less than $40K" is close to Gender "Female".
+
+6) Card category "Platinum is far from any other feature. 
+
+
+```{r echo=TRUE, fig.height=8, fig.width=16}
+plot.CA(res.ca,cex=0,scale.unit=TRUE,label=NULL,graph.type ="ggplot",invisible = "col")
+```
+A visualisation of how data point distributed in 2 first axes.
+
+# 2. Data visualisation
+
+## 2.1 Relationship between age and income
+
+```{r}
+#Age and income
+plot(clients_dataset$Customer_Age~clients_dataset$Income_Category,data=clients_dataset,xlab="Income",ylab="Age",col="black")
+```
+
+There is no observable relationship between age and income category of clients. Furthermore, we don't have the exact number of income to fully evaluate this relation. 
+
+## 2.2 Relationship between gender and income
+```{r echo=TRUE, fig.height=8, fig.width=10}
+par(mfrow=c(1,1))
+
+plot(as.factor(clients_dataset$Gender)~as.factor(clients_dataset$Income_Category),data=clients_dataset,xlab="Income",ylab="Gender",col=c("black","white"))
+
+clients_mod1<-clients_dataset[which(clients_dataset$Income_Category %in% c("$80K - $120K")| clients_dataset$Gender %in% c("M")),]
+barplot(table(clients_mod1[,"Income_Category"]),breaks = 40, main="Male clients ",col='red',xlab="Age")
+
+clients_mod2<-clients_dataset[which(clients_dataset$Income_Category %in% c("$80K - $120K")| clients_dataset$Gender %in% c("F")),]
+barplot(table(clients_mod2[,"Income_Category"]),breaks = 40, main="Female clients",col='blue',xlab="Age")
+
+```
+
+
+
+From the data, we can conclude the income inequality in the set of clients from this bank. Women make up the majority in the group less than $40K, $40K-60K and group Unknown while men dominate in higher income categories. There is indeed inequality in income between men and women.
+The data of female clients' income has an interesting shape which doesn't follow normal distribution, unlike their male counterparts. We can assume there is an exterior force which alters the distribution, but further information is unavailable to conclude these factors.
+
+## 2.3 Relationship between education and income
+
+```{r echo=TRUE, fig.height=20, fig.width=40}
+plot(as.factor(clients_dataset$Education_Level)~as.factor(clients_dataset$Income_Category))
+```
+As we can see, the distribution of educational level amongst income categories is almost the same. We can say that education is not that much important to a person's income.
+
+## 2.4 Card types
+```{r}
+plot(clients_dataset$Card_Category)
+```
+Number of cards in each type is expected and no anomaly detected.
+
+## 2.5 Marital status and other variables
+```{r echo=TRUE, fig.height=10, fig.width=20}
+plot(as.factor(clients_dataset$Marital_Status)~as.factor(clients_dataset$Education_Level))
+```
+There is no significant relationship between marital status and education level.
+
+```{r echo=TRUE, fig.height=10, fig.width=20}
+plot(as.factor(clients_dataset$Marital_Status)~as.factor(clients_dataset$Income_Category))
+```
+Same goes to marital status and income category.
+```{r echo=TRUE, fig.height=10, fig.width=20}
+plot(as.factor(clients_dataset$Marital_Status)~as.factor(clients_dataset$Gender))
+```
+No significant relationship
+
+```{r echo=TRUE, fig.height=10, fig.width=20}
+plot(as.factor(clients_dataset$Marital_Status)~as.factor(clients_dataset$Card_Category))
+```
+Slightly different but not information to conclude anything.
+
+# Conclusion
+
+Thanks to the data set, we have a better view of relationship between features of bank churners including inequality of income between men and women, independence of income and other factors such as educational level or age, credit limit and open-to-buy credit line. This will be an interesting insight for bankers or anyone who works in financial fields.
