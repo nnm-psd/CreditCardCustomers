@@ -1,0 +1,477 @@
+---
+title: "Bank Churners"
+author: "Ngoc Minh NGUYEN"
+date: "24 November 2021"
+output:
+  pdf_document:
+    toc: no
+    highlight: zenburn
+  html_document:
+    toc: no
+    df_print: paged
+fontsize: 11pt
+subtitle: Exploratory Analysis
+geometry: left=2cm,right=2cm,top=2cm,bottom=2cm
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  warning = FALSE,
+  message = FALSE
+)
+
+library(ggplot2)
+library(stringr)
+library(plyr)
+library(dplyr)
+library(tidyr)
+library(readr)   # load dataset
+library(gridExtra)    # arrange plots
+library(plotly)
+library(ggfortify)
+```
+```{r}
+require(FactoMineR)
+require(factoextra)
+require(ggplot2)
+require(tidyr)
+require(dplyr)
+require(MASS)
+require(reshape2)
+require(cowplot)
+```
+
+
+```{r dataset }
+# Load dataset
+clients_dataset <- read.table('BankChurners.csv',header = TRUE, sep = ",")
+
+# Preprocess data
+# Delete the last two columns
+clients_dataset <- clients_dataset[2:21]
+
+
+# Format dataset
+
+clients_dataset$Income_Category <- factor(clients_dataset$Income_Category,levels=c("Less than $40K","$40K - $60K","$60K - $80K","$80K - $120K","$120K +","Unknown"))
+
+clients_dataset$Card_Category <- factor(clients_dataset$Card_Category,levels=c("Blue","Silver","Gold","Platinum"))
+
+clients_dataset$Education_Level <- factor(clients_dataset$Education_Level,levels=c("Uneducated","High School","College","Graduate","Post-Graduate","Doctorate"))
+```
+
+# Introduction 
+
+## Context 
+
+There are more and more customers who decided not continue their credit card services with a bank, which made the bank's manager awfully worry. How can they predict who is going to get churned so that they can provide strategy to retain this number of clients? What are the features of a bank churner?
+
+## Problem
+
+To predict which customer is going to stop credit card service from the bank is crucial to its financial situation. However, the data from credit card customers can bring a lot more than that. We assume the bank's customers are the representative of larger population, so the distribution of the features can be true to a larger population (we have roughly 10,000 customers so it's fair to say the data might be representative). We will take a closer look at this data, keeping in mind the goal of looking for potential bank churner but also helpful information from this. 
+
+
+# 1. The analysis on variables and individuals 
+
+Before we move into details of the data, it should be helpful to have a general view of correlation and representation of variables and individuals on factorial axes. 
+
+
+```{r}
+install.packages("FactoMineR")
+library("FactoMineR")
+```
+
+##  1.1 Analysis of quantitative variables
+
+```{r}
+clientsNum <- clients_dataset[,c(2,4,9:20)]
+res.pca = PCA(clientsNum,scale.unit=TRUE, ncp=5, graph=F)
+```
+
+
+```{r echo=TRUE, fig.height=10, fig.width=10}
+
+par(mfrow=c(1,2))
+plot.PCA(res.pca, axes=c(1,2),choix="var",cex=0.7,label=NULL,graph.type = "ggplot")
+plot.PCA(res.pca, axes=c(2,3),choix="var",cex=0.7,label=NULL,graph.type = "ggplot")
+
+p <- autoplot(res.pca)
+
+ggplotly(p)
+```
+
+Observing at the projection of features on the first factorial plane, we can deduce relationship between some of them:
+
+1) Total_Trans_Ct and Total_Trans_Amt
+Total transaction count (in the last 12 months) and Total transaction amount (in the last 12 months) is positively correlated, which makes sense because the more you make transaction the more amount of money transfered.
+
+2) Credit_Limit and Avg_Open_To_Buy
+Credit limit on the credit card and Open to buy credit line is almost identical in term of correlation. This is expected since the credit limit and credit line are the same definition: in short, it's a credit facility extended by the bank to the customers that enables them to draw on the facility when they need funds. Open-to-buy, however, is the amount you need to buy products with, in order to achieve the set sales budget for a certain period, usually 6 months. 
+
+3) Customer_Age and Month_on_book
+The customer's age and the period of relationship with bank in month is positively correlated as shown in second diagram.
+
+4) Total_Amt_Chng_Q4_Q1 and Total_Ct_Chng_Q4_Q1 
+Change in Transaction Amount (Q4 over Q1) and Change in Transaction Count (Q4 over Q1) are positively related as we have seen above.
+
+```{r}
+res<-res.pca$eig[,1]
+barplot(res[res>1])
+```
+
+The first bar chart shows us the variance retained from each component. Using the law of Kaiser, we only chose components with the variance greater than 1. The second bar chart gives us the first five components on whom we project our data.
+
+
+```{r}
+round(res.pca$var$cos2,digits=2) #Representation of features on axes 
+```
+Looking at the chart above, only Credit_Limit and Avg_Open_To_Buy on the 1st axe; Total_Trans_Amt and Total_Trans_Ct are well presented on the 2nd axe; Customer_Age and Credit_Limit on the 3rd axe; Total_Amt_Chng_Q4_Q1 and Total_Ct_Chng_Q4_Q1 on the 4th axe are the only well presented features so we can only deduce 4 properties as above. 
+(The quality of representation of a feature is decided by its distance to the projection on an axe, the closer it is, the greater the value of cosinus between them)
+
+```{r}
+round(res.pca$var$contrib,digits=1) #Representation of features on axes 
+```
+The chart above gives us information on how each feature contributes to the axes. In in other words, the higher the contribution of a feature, the more inclined the axes toward this feature vector, which also explains the representation of feature on axes.
+
+##  1.2 Analysis of qualitative variables
+
+```{r}
+install.packages("mltools")
+library(mltools)
+
+```
+
+```{r}
+library(data.table)
+```
+
+```{r}
+clientsCat <- clients_dataset[,c(1,3,5:8)]
+clientsCatOH <- one_hot(as.data.table(clientsCat))
+#summary(clientsCatOH)
+clientsCatOH<-drop_na(clientsCatOH) #drop row with missing values
+#sum(is.na(clientsCatOH))
+res.ca <- CA(clientsCatOH,graph=F)
+plot.CA(res.ca,xlim=c(-8,8),invisible="row")
+? plot.CA
+```
+
+```{r}
+clientsCat <- clients_dataset[,c(1,3,5:8)]
+clientsCat
+#for( i in 1:dim(clientsCat)[2]){
+#  clientsCat[,i]=as.factor(clientsCat[,i])
+#}
+summary(clientsCat)
+na.omit(clientsCat)
+drop_na(clientsCat[clientsCat$Card_Category,])
+
+clients.mca = MCA(clients_dataset,quanti.sup = c(2,4,9:20))
+clients.mca$var$eta2
+plot(clients.mca,axes=c(3,4),invisible=c("ind"),cex=0.5)
+plot(clients.mca,axes=c(1,2),invisible=c("ind","quanti.sup"),cex=0.5)
+```
+
+```{r echo=TRUE, fig.height=10, fig.width=16}
+plot.CA(res.ca,cex=0.4,scale.unit=TRUE,label=NULL,graph.type = "ggplot",invisible = "row")
+```
+
+We obtain some interesting information based on the distances between features above:
+
+1) Income category "above $120K" is close to Card category "Gold" and "Silver", but not "Platinum".
+
+2) Income category "$40K-60K", Education level "Highschool" and Marital Status "Married" are close, which creates a group of features.
+
+3) Education level "Uneducated" is close to Marital Status "Single" and "Divorced"
+
+4) Income categories "$60K-80K" and "$80K-120K" are close to Education Level "Post Graduate" and Gender "Male"
+
+5) Income category "Less than $40K" is close to Gender "Female".
+
+6) Card category "Platinum is far from any other feature. 
+
+The most important information is:
+Attrited customers tend to be divorced with unknown income category
+Existing customers tend to have education level of graduate or college, an income range form $40K to $60K 
+
+
+```{r echo=TRUE, fig.height=8, fig.width=16}
+plot.CA(res.ca,axes=c(2,3), cex=0,scale.unit=TRUE,label=NULL,graph.type ="ggplot",invisible = "col")
+```
+A visualisation of how data point distributed in 2 first axes.
+
+# 2. Other relationship
+
+## 2.1 Relationship between age and income
+
+```{r}
+#Age and income
+plot(clients_dataset$Customer_Age~clients_dataset$Income_Category,data=clients_dataset,xlab="Income",ylab="Age",col="black")
+
+hist(clients_dataset$Customer_Age,breaks=40)
+plot(clients_dataset$Income_Category,breaks=20)
+```
+
+```{r  out.width = '77%', fig.align='center'}
+clients_dataset %>% 
+    drop_na(Customer_Age) %>%
+    ddply(.(Customer_Age, Income_Category),
+       function(x){
+          #c("Less than $40K","$40K - $60K","$60K - $80K","$80K - $120K","$120K +","Unknown")
+         clients <- sum(x$Income_Category=="Less than $40K" | x$Income_Category=="$40K - $60K"| x$Income_Category=="$60K - $80K"| x$Income_Category=="$80K - $120K"| x$Income_Category=="$120K +"|x$Income_Category=="Less than $40K")
+         data.frame(Clients= clients)
+       }) %>%
+    ggplot(aes(Customer_Age, Clients)) +
+    scale_fill_manual(name="Income Category",
+                       labels = c("Less than $40K","$40K - $60K","$60K - $80K","$80K - $120K","$120K +","Unknown"), 
+                       values=c(1,2,3,4,5,6))+
+    geom_col(position="dodge", aes(fill=Income_Category)) +
+    coord_cartesian(xlim=c(25, 75)) +  
+    xlab("Age") +
+    ylab("Number of clients by age") +
+    ggtitle("Number of clients by age and by income category")
+```
+
+```{r}
+summary(clients_dataset[clients_dataset$Income_Category=="Less than $40K",]$Customer_Age)
+summary(clients_dataset[clients_dataset$Income_Category=="$40K - $60K",]$Customer_Age)
+summary(clients_dataset[clients_dataset$Income_Category=="$60K - $80K",]$Customer_Age)
+summary(clients_dataset[clients_dataset$Income_Category=="$80K - $120K",]$Customer_Age)
+summary(clients_dataset[clients_dataset$Income_Category=="$120K +",]$Customer_Age)
+```
+As seen above in the chart and in the numeric analysis, the median age and the average age between income categories are quite similar, which may indicate no significant realtionship between them. 
+There is no observable relationship between age and income category of clients. Furthermore, we don't have the exact number of income to fully evaluate this relation. 
+
+## 2.2 Relationship between gender and income
+
+```{r  out.width = '77%', fig.align='center'}
+clients_dataset %>% 
+    drop_na(Customer_Age) %>%
+    ddply(.(Customer_Age, Gender),
+       function(x){
+         clients <- sum(x$Gender=="M" | x$Gender=="F")
+         data.frame(Clients= clients)
+       }) %>%
+    ggplot(aes(Customer_Age, Clients)) +
+    geom_col(position="dodge", aes(fill=Gender)) +
+    coord_cartesian(xlim=c(25, 75)) +  
+    xlab("Age") +
+    ylab("Number of clients by age") +
+    scale_fill_discrete(name="Gender",
+                      labels = c("Female", "Male"))+
+    ggtitle("Number of clients by age and by gender")
+```
+
+
+```{r out.width = '90%', fig.align='center'}
+clients_dataset %>% 
+    drop_na(Income_Category) %>%
+    ddply(.(Income_Category, Gender),
+       function(x){
+         clients <- sum(x$Gender=="M" | x$Gender=="F")
+         data.frame(Clients= clients)
+       }) %>%
+    ggplot(aes(Income_Category, Clients)) +
+    geom_col(position="dodge", aes(fill=Gender)) +
+    xlab("Income Category") +
+    ylab("Number of clients by income category") +
+    scale_fill_discrete(name="Gender",
+                      labels = c("Female", "Male"))+
+    ggtitle("Number of clients by gender and income")
+```
+
+From the data, we can conclude the income inequality in the set of clients from this bank. Women make up the majority in the group less than $40K, $40K-60K and group Unknown while men dominate in higher income categories. There is indeed inequality in income between men and women.
+The data of female clients' income has an interesting shape which doesn't follow normal distribution, unlike their male counterparts. We can assume there is an exterior force which alters the distribution, but further information is unavailable to conclude these factors.
+
+```{r}
+CAT.mca=MCA(clientsCat)
+CAT.mca$var$v.test
+dimdesc(CAT.mca)
+#chisq <- chisq.test(CAT.mca)
+```
+
+## 2.3 Relationship between education and income
+
+```{r out.width = '100%', fig.align='center'}
+clients_dataset %>% 
+    drop_na(Income_Category) %>%
+    ddply(.(Income_Category, Education_Level),
+       function(x){
+         #c("Uneducated","High School","College","Graduate","Post-Graduate","Doctorate"))
+         clients <- sum(x$Education_Level=="Uneducated" | x$Education_Level=="High School"|x$Education_Level=="College" |x$Education_Level=="Graduate" |x$Education_Level=="Post-Graduate" |x$Education_Level=="Doctorate" )
+         data.frame(Clients= clients)
+       }) %>%
+    ggplot(aes(Income_Category, Clients)) +
+    geom_col(position="dodge", aes(fill=Education_Level)) +
+    xlab("Income Category") +
+    ylab("Number of clients by educational levels") +
+    scale_fill_discrete(name="Educational level",
+                      labels = c("Uneducated","High School","College","Graduate","Post-Graduate","Doctorate"))+
+    ggtitle("Number of clients by income category and educational levels")
+
+```
+
+As we can see, the distribution of educational level amongst income categories is almost the same. We can say that education is not that much important to a person's income.
+
+## 2.4 Card types
+```{r}
+clients_dataset %>% 
+  dplyr::select(Card_Category) %>% 
+    drop_na() %>% 
+    ggplot(aes(Card_Category)) +
+    geom_bar(fill = 'lightblue') +
+    xlab("Card Category") + 
+    ylab("Number of cards by educational levels") +
+    ggtitle("Number of cards by type")
+    
+```
+Number of cards in each type is expected and no anomaly detected.
+
+```{r out.width = '90%', fig.align='center'}
+clients_dataset %>% 
+    drop_na(Income_Category) %>%
+    ddply(.(Income_Category, Card_Category),
+       function(x){
+         clients <- sum(x$Card_Category=="Blue" | x$Card_Category=="Silver"| x$Card_Category=="Gold"| x$Card_Category=="Platinum")
+         data.frame(Clients= clients)
+       }) %>%
+    ggplot(aes(Income_Category, Clients)) +
+    scale_fill_manual(name="Card Category",
+                       labels = c("Blue", "Silver","Gold","Platinum"), 
+                       values=c("lightblue","gray55","darkgoldenrod3", "white"))+
+    geom_col(position="dodge", aes(fill=Card_Category)) +
+    xlab("Income Category") +
+    ylab("Number of clients by income category") +
+    #scale_fill_discrete(name="Card category",
+    #                  labels = c("Blue", "Silver","Gold","Platinum"))+
+    ggtitle("Number of clients by card category and income")
+
+```
+
+## 2.5 Marital status and other variables
+
+```{r}
+clients_dataset %>% 
+  dplyr::select(Marital_Status) %>% 
+    drop_na() %>% 
+    ggplot(aes(Marital_Status)) +
+    geom_bar(fill = 'lightblue') +
+    xlab("Marital Status") + 
+    ylab("Number of clients by marital status") +
+    ggtitle("Number of clients by marital status")
+    
+```
+
+
+```{r out.width = '90%', fig.align='center'}
+clients_dataset %>% 
+    drop_na(Marital_Status) %>%
+    ddply(.(Marital_Status,Income_Category),
+       function(x){
+         clients <- sum(x$Education_Level=="Uneducated" | x$Education_Level=="High School"|x$Education_Level=="College" |x$Education_Level=="Graduate" |x$Education_Level=="Post-Graduate" |x$Education_Level=="Doctorate" )
+         data.frame(Clients= clients)
+       }) %>%
+    ggplot(aes(Marital_Status, Clients)) +
+    geom_col(position="dodge", aes(fill=Income_Category)) +
+    xlab("Marital Status") +
+    ylab("Number of clients by marital status") +
+    scale_fill_discrete(name="Educational Level",
+                      labels = c("Uneducated","High School","College","Graduate","Post-Graduate","Doctorate"))+
+    ggtitle("Number of clients by marital status and income")
+```
+
+There is no significant relationship between marital status and education level. The trend of educational level is quite similar so we can not say much about the relationship of marriage and education of clients
+
+```{r echo=TRUE, fig.height=10, fig.width=20}
+plot(as.factor(clients_dataset$Marital_Status)~as.factor(clients_dataset$Income_Category))
+```
+Same goes to marital status and income category.
+```{r echo=TRUE, fig.height=10, fig.width=20}
+plot(as.factor(clients_dataset$Marital_Status)~as.factor(clients_dataset$Gender))
+```
+No significant relationship
+
+```{r echo=TRUE, fig.height=10, fig.width=20}
+plot(as.factor(clients_dataset$Marital_Status)~as.factor(clients_dataset$Card_Category))
+```
+Slightly different but not enough information to conclude anything.
+
+## 3.Attrition Flag: Who are bank churners?
+
+```{r out.width = '90%', fig.align='center'}
+clients_dataset %>% 
+    drop_na(Income_Category) %>%
+    ddply(.(Income_Category, Attrition_Flag),
+       function(x){
+         clients <- sum(x$Attrition_Flag=="Attrited Customer" | x$Attrition_Flag=="Existing Customer")
+         data.frame(Clients= clients)
+       }) %>%
+    ggplot(aes(Income_Category, Clients)) +
+    scale_fill_manual(name="Attrition Flag",
+                       labels = c("Attrited Customer", "Existing Customer"), 
+                       values=c("red","blue"))+
+    geom_col(position="dodge", aes(fill=Attrition_Flag)) +
+    xlab("Income category") +
+    ylab("Number of clients by income category") +
+    #scale_fill_discrete(name="Card category",
+    #                  labels = c("Blue", "Silver","Gold","Platinum"))+
+    ggtitle("Number of clients by card category and attrition flag")
+
+```
+```{r}
+clients_dataset %>%
+    count(Customer_Age, Attrition_Flag) %>%
+    spread(Attrition_Flag, n, fill=0) %>%
+  #c("Less than $40K","$40K - $60K","$60K - $80K","$80K - $120K","$120K +","Unknown")
+    mutate(
+        Nb_attritedClient =dim(clients_dataset[clients_dataset$Attrition_Flag=="Attrited Customer",])[1],
+        Nb_client = dim(clients_dataset)[1],
+        Percentage = (Nb_attritedClient / Nb_client)
+    ) %>% 
+    
+    ggplot(aes(x = Customer_Age, y = Percentage)) + 
+    geom_bar(stat = "identity", fill = 'steelblue4') + 
+    coord_cartesian(xlim=c(25, 75))  +
+    xlab("Age")+
+    ylab("Percentage of attrited customers") +
+    ggtitle("Probability of bank churners by age")+
+    guides(fill="none")
+
+
+```
+
+```{r}
+dim(clients_dataset[clients_dataset$Attrition_Flag=="Attrited Customer",])[1]/dim(clients_dataset)[1]
+clients_dataset
+clients_dataset$Attrition_Flag_Attrited_Customer
+```
+
+```{r out.width = '90%', fig.align='center'}
+clients_dataset %>% 
+    drop_na(Marital_Status) %>%
+    ddply(.(Marital_Status, Attrition_Flag),
+       function(x){
+         clients <- sum(x$Attrition_Flag=="Attrited Customer" | x$Attrition_Flag=="Existing Customer")
+         data.frame(Clients= clients)
+       }) %>%
+    ggplot(aes(Marital_Status, Clients)) +
+    scale_fill_manual(name="Attrition Flag",
+                       labels = c("Attrited Customer", "Existing Customer"), 
+                       values=c("red","blue"))+
+    geom_col(position="dodge", aes(fill=Attrition_Flag)) +
+    xlab("Marital Status") +
+    ylab("Number of clients by income category") +
+    #scale_fill_discrete(name="Card category",
+    #                  labels = c("Blue", "Silver","Gold","Platinum"))+
+    ggtitle("Number of clients by marital status and attrition flag")
+
+```
+
+# Conclusion
+
+Thanks to the data set, we have a better view of relationship between features of bank churners including inequality of income between men and women, independence of income and other factors such as educational level or age, credit limit and open-to-buy credit line. This will be an interesting insight for bankers or anyone who works in financial fields.
+
+Phải tạo thêm bảng so sánh existing client với attrited clients với các biến khác để xem sự liên quan
+
+Tính xác suất của 1 người là existing client nếu họ có features nhất định
